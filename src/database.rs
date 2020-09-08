@@ -6,6 +6,7 @@ use rustc_hash::FxHasher;
 use serde::{de::IgnoredAny, Deserialize, Serialize};
 use serde_json::Deserializer;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -15,51 +16,59 @@ const DATABASE_VERSION: u64 = 1;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Database {
-    teams: HashMap<Uuid, History<Team>>,
-    players: HashMap<Uuid, History<Player>>,
+    pub teams: HashMap<Uuid, History<Team>>,
+    pub players: HashMap<Uuid, History<Player>>,
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Team {
     #[serde(alias = "_id")]
-    id: Uuid,
-    nickname: String,
-    lineup: Vec<Uuid>,
-    rotation: Vec<Uuid>,
+    pub id: Uuid,
+    pub nickname: String,
+    pub lineup: [Uuid; 9],
+    pub rotation: [Uuid; 5],
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Default, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
     #[serde(alias = "_id")]
-    id: Uuid,
-    name: String,
-    anticapitalism: f64,
-    base_thirst: f64,
-    buoyancy: f64,
-    chasiness: f64,
-    cinnamon: f64,
-    coldness: f64,
-    continuation: f64,
-    divinity: f64,
-    ground_friction: f64,
-    indulgence: f64,
-    laserlikeness: f64,
-    martyrdom: f64,
-    moxie: f64,
-    musclitude: f64,
-    omniscience: f64,
-    overpowerment: f64,
-    patheticism: f64,
-    pressurization: f64,
-    ruthlessness: f64,
-    shakespearianism: f64,
-    suppression: f64,
-    tenaciousness: f64,
-    thwackability: f64,
-    tragicness: f64,
-    unthwackability: f64,
-    watchfulness: f64,
+    pub id: Uuid,
+    pub name: String,
+    pub anticapitalism: f64,
+    pub base_thirst: f64,
+    pub buoyancy: f64,
+    pub chasiness: f64,
+    pub cinnamon: f64,
+    pub coldness: f64,
+    pub continuation: f64,
+    pub divinity: f64,
+    pub ground_friction: f64,
+    pub indulgence: f64,
+    pub laserlikeness: f64,
+    pub martyrdom: f64,
+    pub moxie: f64,
+    pub musclitude: f64,
+    pub omniscience: f64,
+    pub overpowerment: f64,
+    pub patheticism: f64,
+    pub pressurization: f64,
+    pub ruthlessness: f64,
+    pub shakespearianism: f64,
+    pub tenaciousness: f64,
+    pub thwackability: f64,
+    pub tragicness: f64,
+    pub unthwackability: f64,
+    pub watchfulness: f64,
+}
+
+impl fmt::Debug for Player {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Player")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize)]

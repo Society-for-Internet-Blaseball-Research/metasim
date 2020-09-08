@@ -21,7 +21,7 @@ impl<T: PartialEq> History<T> {
         // https://github.com/rust-lang/rust/issues/70530 would be nice here
         let mut prev = None;
         let mut remove = Vec::new();
-        for (k, v) in self.0.iter() {
+        for (k, v) in &self.0 {
             if Some(v) == prev {
                 remove.push(*k);
             } else {

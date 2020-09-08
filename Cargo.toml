@@ -11,10 +11,14 @@ bincode = "1"
 chrono = "0.4"
 dirs = "3"
 flate2 = "1"
+rand = "0.7"
 rustc-hash = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = "0.2"
 uuid = { version = "0.8", features = ["serde"] }
 
 [dev-dependencies]
+assert_approx_eq = "1"
 maplit = "1"
