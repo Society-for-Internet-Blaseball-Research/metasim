@@ -1,3 +1,4 @@
+use std::fmt;
 use uuid::Uuid;
 
 pub fn halfuuid(uuid: Uuid) -> u64 {
@@ -20,6 +21,37 @@ fn test_fix() {
     assert_approx_eq!(fix(0.5, 0.1, 0.9), 0.5);
     assert_approx_eq!(fix(1.1, 0.1, 0.9), 0.98);
     assert_approx_eq!(fix(0.5, 0.1, 0.5), 0.3);
+}
+
+// =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=
+
+#[derive(Debug, Default)]
+pub struct Accuracy {
+    len: u32,
+    correct: u32,
+    error: f64,
+}
+
+impl Accuracy {
+    pub fn record(&mut self, expected: f64, actual: u8) {
+        let actual = f64::from(actual);
+        self.len += 1;
+        if (expected - actual).abs() <= 0.5 {
+            self.correct += 1;
+        }
+        self.error += (actual - expected).powi(2);
+    }
+}
+
+impl fmt::Display for Accuracy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "correct: {}, error: {}",
+            f64::from(self.correct) / f64::from(self.len),
+            self.error / f64::from(self.len)
+        )
+    }
 }
 
 // =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=

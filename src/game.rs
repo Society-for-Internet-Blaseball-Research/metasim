@@ -17,8 +17,11 @@ pub struct Game {
     pub day: u8,
     pub away_pitcher: Uuid,
     pub away_team: Uuid,
+    pub away_odds: f64,
+    pub away_score: u16,
     pub home_pitcher: Uuid,
     pub home_team: Uuid,
+    pub home_score: u16,
 }
 
 pub struct Playable {
