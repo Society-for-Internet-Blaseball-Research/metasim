@@ -1,7 +1,8 @@
 [package]
-name = "blaseball-simulation-simulator"
+name = "metasim"
 version = "0.1.0"
 authors = ["iliana etaoin <iliana@buttslol.net>"]
+license = "MIT"
 edition = "2018"
 publish = false
 
