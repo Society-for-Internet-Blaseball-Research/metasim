@@ -8,7 +8,7 @@ use std::fmt;
 use tracing::{instrument, trace};
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Game {
     #[serde(alias = "_id")]
@@ -21,14 +21,20 @@ pub struct Game {
     pub home_team: Uuid,
 }
 
-impl fmt::Debug for Game {
+pub struct Playable {
+    pub id: Uuid,
+    pub season: u16,
+    pub day: u8,
+    pub lineups: AwayHome<[Player; 9]>,
+    pub pitchers: AwayHome<Player>,
+}
+
+impl fmt::Debug for Playable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Game")
             .field("id", &self.id)
             .field("season", &(self.season + 1))
             .field("day", &(self.day + 1))
-            .field("away_team", &self.away_team)
-            .field("home_team", &self.home_team)
             .finish()
     }
 }
@@ -42,26 +48,23 @@ pub struct State<'a> {
 
 #[derive(Debug, Default)]
 pub struct Score {
-    inning: u8,
-    bottom: bool,
-    score: AwayHome<u8>,
-    shame: bool,
+    pub inning: u8,
+    pub bottom: bool,
+    pub score: AwayHome<u8>,
 }
 
 impl Game {
-    #[instrument(name = "Game::simulate", skip(database))]
-    pub fn simulate(&self, database: &Database) -> Option<Score> {
-        let timestamp = self.timestamp();
+    pub fn playable(&self, database: &Database) -> Option<Playable> {
         let teams = AwayHome {
             away: self.away_team,
             home: self.home_team,
         }
-        .map_opt(|id| database.teams.get(id).and_then(|h| h.get(timestamp)))?;
+        .map_opt(|id| database.teams.get(id).and_then(|h| h.get(self.timestamp())))?;
         let lineups = teams.map_opt(|team| {
             let lineup = team
                 .lineup
                 .iter()
-                .map(|id| get_player(database, self, id))
+                .map(|id| self.get_player(database, id))
                 .collect::<Option<Vec<Player>>>()?;
             if lineup.len() == 9 {
                 let boxed_array: Box<[Player; 9]> = lineup.into_boxed_slice().try_into().ok()?;
@@ -71,19 +74,42 @@ impl Game {
             }
         })?;
         let pitchers = AwayHome {
-            away: get_player(database, self, &self.away_pitcher)?,
-            home: get_player(database, self, &self.home_pitcher)?,
+            away: self.get_player(database, &self.away_pitcher)?,
+            home: self.get_player(database, &self.home_pitcher)?,
         };
 
+        Some(Playable {
+            id: self.id,
+            season: self.season,
+            day: self.day,
+            lineups,
+            pitchers,
+        })
+    }
+
+    fn timestamp(&self) -> u64 {
+        crate::time::game_time(self.season, self.day)
+    }
+
+    fn get_player(&self, database: &Database, id: &Uuid) -> Option<Player> {
+        let mut player = database.players.get(id)?.get(self.timestamp())?.clone();
+        player.vibe_check(self.day);
+        Some(player)
+    }
+}
+
+impl Playable {
+    #[instrument(name = "Game::simulate")]
+    pub fn simulate(&self) -> Score {
         let mut state = State::default();
 
         while !state.is_complete() {
-            let pitcher = state.fielding(&pitchers);
-            let defense = state.fielding(&lineups);
+            let pitcher = state.fielding(&self.pitchers);
+            let defense = state.fielding(&self.lineups);
 
             let mut outs = 0_u8;
             while outs < 3 {
-                let batter = state.batter(&lineups);
+                let batter = state.batter(&self.lineups);
                 let mut balls = 0_u8;
                 let mut strikes = 0_u8;
 
@@ -202,11 +228,7 @@ impl Game {
             state.next_half_inning();
         }
 
-        Some(state.score)
-    }
-
-    fn timestamp(&self) -> u64 {
-        crate::time::game_time(self.season, self.day)
+        state.score
     }
 }
 
@@ -331,12 +353,6 @@ impl<'a> State<'a> {
             false
         }
     }
-}
-
-fn get_player(database: &Database, game: &Game, id: &Uuid) -> Option<Player> {
-    let mut player = database.players.get(id)?.get(game.timestamp())?.clone();
-    player.vibe_check(game.day);
-    Some(player)
 }
 
 #[cfg(test)]
