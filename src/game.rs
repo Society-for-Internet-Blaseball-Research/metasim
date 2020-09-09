@@ -1,6 +1,7 @@
 use crate::database::{Database, Player};
 use crate::pitch::Pitch;
-use crate::util::AwayHome;
+use crate::util::{fix, random, AwayHome};
+use rand::{thread_rng, Rng};
 use serde::Deserialize;
 use std::convert::TryInto;
 use std::fmt;
@@ -11,13 +12,13 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct Game {
     #[serde(alias = "_id")]
-    id: Uuid,
-    season: u16,
-    day: u8,
-    away_pitcher: Uuid,
-    away_team: Uuid,
-    home_pitcher: Uuid,
-    home_team: Uuid,
+    pub id: Uuid,
+    pub season: u16,
+    pub day: u8,
+    pub away_pitcher: Uuid,
+    pub away_team: Uuid,
+    pub home_pitcher: Uuid,
+    pub home_team: Uuid,
 }
 
 impl fmt::Debug for Game {
@@ -121,15 +122,75 @@ impl Game {
                         }
                         Pitch::Out => {
                             outs += 1;
-                            unimplemented!("handle fielder's choice / double plays");
+                            if state.bases.iter().any(Option::is_some) {
+                                let first_defender = &defense[thread_rng().gen_range(0, 9)];
+                                let double_play = {
+                                    let second_defender = &defense[thread_rng().gen_range(0, 9)];
+                                    let p = fix(first_defender.defense(), 0.0, 0.075)
+                                        + fix(second_defender.defense(), 0.0, 0.075);
+                                    let r = random();
+                                    trace!(
+                                        double_play = r < p,
+                                        %p,
+                                        %r,
+                                        first_defender.defense = %first_defender.defense(),
+                                        second_defender.defense = %second_defender.defense(),
+                                        ?first_defender,
+                                        ?second_defender,
+                                    );
+                                    r < p
+                                };
+                                if double_play {
+                                    // runner on the highest base is out, batter is out, everyone
+                                    // else advances 0-1 bases
+                                    outs += 1;
+                                    *state.bases.iter_mut().rev().next().unwrap() = None;
+                                    state.advance(0, 1);
+                                    break;
+                                }
+
+                                let fielders_choice = {
+                                    let p = fix(first_defender.defense(), 0.0, 0.75);
+                                    let r = random();
+                                    trace!(
+                                        fielders_choice = r < p,
+                                        %p,
+                                        %r,
+                                        defender.defense = %first_defender.defense(),
+                                        defender = ?first_defender,
+                                    );
+                                    r < p
+                                };
+                                if fielders_choice {
+                                    // runner on the highest base is out, everyone else advances
+                                    // 1 base, runner on first
+                                    outs += 1;
+                                    *state.bases.iter_mut().rev().next().unwrap() = None;
+                                    state.advance(1, 1);
+                                    state.bases[0] = Some(batter);
+                                    break;
+                                }
+                            }
                             break;
                         }
-                        Pitch::Single | Pitch::Double | Pitch::Triple => {
-                            unimplemented!("on base, advance runners");
+                        Pitch::Single => {
+                            state.advance(1, 2);
+                            state.bases[0] = Some(batter);
+                            break;
+                        }
+                        Pitch::Double => {
+                            state.advance(2, 3);
+                            state.bases[1] = Some(batter);
+                            break;
+                        }
+                        Pitch::Triple => {
+                            state.advance(3, 3);
+                            state.bases[2] = Some(batter);
                             break;
                         }
                         Pitch::Dinger => {
-                            unimplemented!("dinger");
+                            state.advance(3, 3);
+                            trace!(player_scored = ?batter);
                             break;
                         }
                     }
@@ -175,10 +236,18 @@ impl<'a> State<'a> {
         }
     }
 
+    fn score(&mut self) {
+        if self.is_top() {
+            self.score.score.away += 1;
+        } else {
+            self.score.score.home += 1;
+        }
+    }
+
     #[instrument]
     fn walk(&mut self, batter: &'a Player) {
         let mut swap = Some(batter);
-        for batter in self.bases.iter_mut() {
+        for batter in &mut self.bases {
             swap = std::mem::replace(batter, swap);
             if swap.is_none() {
                 break;
@@ -186,12 +255,45 @@ impl<'a> State<'a> {
         }
         if let Some(player) = swap {
             trace!(player_scored = ?player);
-            if self.is_top() {
-                self.score.score.away += 1;
-            } else {
-                self.score.score.home += 1;
+            self.score();
+        }
+    }
+
+    #[instrument]
+    fn advance(&mut self, min: usize, max: usize) {
+        let mut new_bases = [None; 3];
+        let mut score = 0_usize;
+        let mut in_front = max;
+        for (i, base) in self.bases.iter_mut().enumerate().rev() {
+            if let Some(runner) = base.take() {
+                let extra_base = if in_front > min {
+                    let p = fix(runner.baserunning(), 0.0, 0.5);
+                    let r = random();
+                    trace!(
+                        extra_base = r < p,
+                        %p,
+                        %r,
+                        runner.baserunning = %runner.baserunning(),
+                        ?runner,
+                    );
+                    r < p
+                } else {
+                    false
+                };
+                in_front = if extra_base { min + 1 } else { min };
+                let new_base = i + in_front;
+                if new_base >= 3 {
+                    trace!(player_scored = ?runner);
+                    score += 1;
+                } else {
+                    new_bases[new_base] = Some(runner);
+                }
             }
         }
+        for _ in 0..score {
+            self.score();
+        }
+        self.bases = new_bases;
     }
 
     fn hitting<'b, T>(&self, x: &'b AwayHome<T>) -> &'b T {

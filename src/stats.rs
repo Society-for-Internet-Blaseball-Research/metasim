@@ -54,6 +54,7 @@ impl Player {
         self.watchfulness += adj;
     }
 
+    #[allow(unused)]
     pub fn batting(&self) -> f64 {
         (1.0 - self.tragicness).powf(0.01)
             * self.thwackability.powf(0.35)
