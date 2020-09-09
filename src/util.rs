@@ -1,7 +1,9 @@
-use rand::{thread_rng, Rng};
+use uuid::Uuid;
 
-pub fn random() -> f64 {
-    thread_rng().gen()
+pub fn halfuuid(uuid: Uuid) -> u64 {
+    let mut b = [0; 8];
+    b.copy_from_slice(&uuid.as_u128().to_be_bytes()[8..16]);
+    u64::from_be_bytes(b)
 }
 
 pub fn fix(x: f64, min: f64, max: f64) -> f64 {

@@ -20,8 +20,8 @@ fn monte_carlo(game: &Playable) -> f64 {
     let simulations = 10_000_u32;
     let away_wins: u32 = (0..simulations)
         .into_par_iter()
-        .map(|_| {
-            let score = game.simulate();
+        .map(|i| {
+            let score = game.simulate(u64::from(i));
             if score.score.away > score.score.home {
                 1
             } else {

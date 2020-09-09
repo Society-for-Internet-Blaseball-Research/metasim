@@ -1,6 +1,6 @@
 use crate::database::Player;
-use crate::util::{fix, random};
-use rand::{thread_rng, Rng};
+use crate::util::fix;
+use rand::Rng;
 use tracing::{instrument, trace};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,8 +16,13 @@ pub enum Pitch {
 }
 
 impl Pitch {
-    #[instrument(name = "Pitch::simulate", skip(defense))]
-    pub fn simulate(pitcher: &Player, batter: &Player, defense: &[Player; 9]) -> Pitch {
+    #[instrument(name = "Pitch::simulate", skip(defense, rng))]
+    pub fn simulate(
+        pitcher: &Player,
+        batter: &Player,
+        defense: &[Player; 9],
+        rng: &mut impl Rng,
+    ) -> Pitch {
         // Some correlations we understand so far:
         //
         // * higher thwackability correlates to more hits
@@ -40,7 +45,7 @@ impl Pitch {
         // 1. Here's the pitch. Is it in the strike zone?
         let in_strike_zone = {
             let p = (fix(1.0 - batter.moxie, 0.2, 0.8) + fix(pitcher.pitching(), 0.0, 1.0)) / 2.0;
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(
                 in_strike_zone = r < p,
                 %p,
@@ -55,7 +60,7 @@ impl Pitch {
         let batter_swings = {
             let p =
                 if in_strike_zone { 0.8 } else { 0.2 } + fix(pitcher.shakespearianism, 0.0, 0.15);
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(batter_swings = r < p, %p, %r, in_strike_zone, %pitcher.shakespearianism);
             r < p
         };
@@ -75,7 +80,7 @@ impl Pitch {
             let p = if in_strike_zone { 0.8 } else { 0.1 } - fix(batter.patheticism, 0.0, 0.15)
                 + fix(batter.thwackability, 0.0, 0.4)
                 - fix(pitcher.unthwackability, 0.0, 0.4);
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(
                 batter_hits = r < p,
                 %p,
@@ -100,7 +105,7 @@ impl Pitch {
         // [1]: https://www.beyondtheboxscore.com/2014/6/4/5776990/swing-rate-ball-strike-counts-swinging-strikes
         let foul = {
             let p = 0.4;
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(foul = r < p, %p, %r);
             r < p
         };
@@ -111,7 +116,7 @@ impl Pitch {
 
         let home_run = {
             let p = fix(batter.divinity, 0.0, 0.06);
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(home_run = r < p, %p, %r, %batter.divinity);
             r < p
         };
@@ -122,9 +127,9 @@ impl Pitch {
 
         // 5. The ball is in play. Pick a defender at random and roll
         let out = {
-            let defender = &defense[thread_rng().gen_range(0, 9)];
+            let defender = &defense[rng.gen_range(0, 9)];
             let p = fix(defender.defense(), 0.2, 0.6) + fix(batter.thwackability, 0.0, 0.2);
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(out = r < p, %p, %r, defender.defense = %defender.defense(), %batter.thwackability, ?defender);
             r < p
         };
@@ -135,7 +140,7 @@ impl Pitch {
 
         let single = {
             let p = 1.0 - fix(batter.musclitude, 0.2, 0.4);
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(single = r < p, %p, %r, %batter.musclitude);
             r < p
         };
@@ -146,7 +151,7 @@ impl Pitch {
 
         let triple = {
             let p = fix(batter.ground_friction, 0.1, 0.4);
-            let r = random();
+            let r: f64 = rng.gen();
             trace!(triple = r < p, %p, %r, %batter.ground_friction);
             r < p
         };

@@ -1,7 +1,7 @@
 use crate::database::{Database, Player};
 use crate::pitch::Pitch;
-use crate::util::{fix, random, AwayHome};
-use rand::{thread_rng, Rng};
+use crate::util::{fix, halfuuid, AwayHome};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::Deserialize;
 use std::convert::TryInto;
 use std::fmt;
@@ -100,8 +100,9 @@ impl Game {
 
 impl Playable {
     #[instrument(name = "Game::simulate")]
-    pub fn simulate(&self) -> Score {
+    pub fn simulate(&self, seed: u64) -> Score {
         let mut state = State::default();
+        let mut rng = StdRng::seed_from_u64(halfuuid(self.id).wrapping_add(seed));
 
         while !state.is_complete() {
             let pitcher = state.fielding(&self.pitchers);
@@ -126,7 +127,7 @@ impl Playable {
                         bases = ?state.bases,
                     );
 
-                    match Pitch::simulate(pitcher, batter, defense) {
+                    match Pitch::simulate(pitcher, batter, defense, &mut rng) {
                         Pitch::Ball => {
                             balls += 1;
                             if balls == 4 {
@@ -149,12 +150,12 @@ impl Playable {
                         Pitch::Out => {
                             outs += 1;
                             if state.bases.iter().any(Option::is_some) {
-                                let first_defender = &defense[thread_rng().gen_range(0, 9)];
+                                let first_defender = &defense[rng.gen_range(0, 9)];
                                 let double_play = {
-                                    let second_defender = &defense[thread_rng().gen_range(0, 9)];
+                                    let second_defender = &defense[rng.gen_range(0, 9)];
                                     let p = fix(first_defender.defense(), 0.0, 0.075)
                                         + fix(second_defender.defense(), 0.0, 0.075);
-                                    let r = random();
+                                    let r: f64 = rng.gen();
                                     trace!(
                                         double_play = r < p,
                                         %p,
@@ -171,13 +172,13 @@ impl Playable {
                                     // else advances 0-1 bases
                                     outs += 1;
                                     *state.bases.iter_mut().rev().next().unwrap() = None;
-                                    state.advance(0, 1);
+                                    state.advance(0, 1, &mut rng);
                                     break;
                                 }
 
                                 let fielders_choice = {
                                     let p = fix(first_defender.defense(), 0.0, 0.75);
-                                    let r = random();
+                                    let r: f64 = rng.gen();
                                     trace!(
                                         fielders_choice = r < p,
                                         %p,
@@ -192,7 +193,7 @@ impl Playable {
                                     // 1 base, runner on first
                                     outs += 1;
                                     *state.bases.iter_mut().rev().next().unwrap() = None;
-                                    state.advance(1, 1);
+                                    state.advance(1, 1, &mut rng);
                                     state.bases[0] = Some(batter);
                                     break;
                                 }
@@ -200,22 +201,22 @@ impl Playable {
                             break;
                         }
                         Pitch::Single => {
-                            state.advance(1, 2);
+                            state.advance(1, 2, &mut rng);
                             state.bases[0] = Some(batter);
                             break;
                         }
                         Pitch::Double => {
-                            state.advance(2, 3);
+                            state.advance(2, 3, &mut rng);
                             state.bases[1] = Some(batter);
                             break;
                         }
                         Pitch::Triple => {
-                            state.advance(3, 3);
+                            state.advance(3, 3, &mut rng);
                             state.bases[2] = Some(batter);
                             break;
                         }
                         Pitch::Dinger => {
-                            state.advance(3, 3);
+                            state.advance(3, 3, &mut rng);
                             trace!(player_scored = ?batter);
                             break;
                         }
@@ -281,8 +282,8 @@ impl<'a> State<'a> {
         }
     }
 
-    #[instrument]
-    fn advance(&mut self, min: usize, max: usize) {
+    #[instrument(skip(rng))]
+    fn advance(&mut self, min: usize, max: usize, rng: &mut impl Rng) {
         let mut new_bases = [None; 3];
         let mut score = 0_usize;
         let mut in_front = max;
@@ -290,7 +291,7 @@ impl<'a> State<'a> {
             if let Some(runner) = base.take() {
                 let extra_base = if in_front > min {
                     let p = fix(runner.baserunning(), 0.0, 0.5);
-                    let r = random();
+                    let r: f64 = rng.gen();
                     trace!(
                         extra_base = r < p,
                         %p,
