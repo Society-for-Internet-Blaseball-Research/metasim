@@ -16,10 +16,8 @@ pub struct Game {
     day: u8,
     away_pitcher: Uuid,
     away_team: Uuid,
-    away_odds: f64,
     home_pitcher: Uuid,
     home_team: Uuid,
-    home_odds: f64,
 }
 
 impl fmt::Debug for Game {
@@ -105,7 +103,7 @@ impl Game {
                         Pitch::Ball => {
                             balls += 1;
                             if balls == 4 {
-                                unimplemented!("on base without advancing unforced runners");
+                                state.walk(batter);
                                 break;
                             }
                         }
@@ -177,6 +175,25 @@ impl<'a> State<'a> {
         }
     }
 
+    #[instrument]
+    fn walk(&mut self, batter: &'a Player) {
+        let mut swap = Some(batter);
+        for batter in self.bases.iter_mut() {
+            swap = std::mem::replace(batter, swap);
+            if swap.is_none() {
+                break;
+            }
+        }
+        if let Some(player) = swap {
+            trace!(player_scored = ?player);
+            if self.is_top() {
+                self.score.score.away += 1;
+            } else {
+                self.score.score.home += 1;
+            }
+        }
+    }
+
     fn hitting<'b, T>(&self, x: &'b AwayHome<T>) -> &'b T {
         if self.is_top() {
             &x.away
@@ -218,4 +235,92 @@ fn get_player(database: &Database, game: &Game, id: &Uuid) -> Option<Player> {
     let mut player = database.players.get(id)?.get(game.timestamp())?.clone();
     player.vibe_check(game.day);
     Some(player)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Player, State};
+    use uuid::Uuid;
+
+    impl Player {
+        const fn test(uuid: u128) -> Player {
+            Player {
+                id: Uuid::from_u128(uuid),
+                name: String::new(),
+                anticapitalism: 0.0,
+                base_thirst: 0.0,
+                buoyancy: 0.0,
+                chasiness: 0.0,
+                cinnamon: 0.0,
+                coldness: 0.0,
+                continuation: 0.0,
+                divinity: 0.0,
+                ground_friction: 0.0,
+                indulgence: 0.0,
+                laserlikeness: 0.0,
+                martyrdom: 0.0,
+                moxie: 0.0,
+                musclitude: 0.0,
+                omniscience: 0.0,
+                overpowerment: 0.0,
+                patheticism: 0.0,
+                pressurization: 0.0,
+                ruthlessness: 0.0,
+                shakespearianism: 0.0,
+                tenaciousness: 0.0,
+                thwackability: 0.0,
+                tragicness: 0.0,
+                unthwackability: 0.0,
+                watchfulness: 0.0,
+            }
+        }
+    }
+
+    const ANNIE: &'static Player = &Player::test(0x4f7d749072814f8fb62e37e99a7c46a0);
+    const ALYSSA: &'static Player = &Player::test(0x80de2b05e0d44d3392979951b2b5c950);
+    const EIZABETH: &'static Player = &Player::test(0xaa6c266275f84506aa069a0993313216);
+    const WYATT: &'static Player = &Player::test(0xe16c3f28eecd4571be1a606bbac36b2b);
+
+    #[test]
+    fn test_walk() {
+        let mut state = State {
+            bases: [None, None, None],
+            ..Default::default()
+        };
+        state.walk(ANNIE);
+        assert_eq!(state.bases, [Some(ANNIE), None, None]);
+        assert_eq!(state.score.score.away, 0);
+
+        let mut state = State {
+            bases: [Some(ALYSSA), None, None],
+            ..Default::default()
+        };
+        state.walk(ANNIE);
+        assert_eq!(state.bases, [Some(ANNIE), Some(ALYSSA), None]);
+        assert_eq!(state.score.score.away, 0);
+
+        let mut state = State {
+            bases: [None, Some(ALYSSA), None],
+            ..Default::default()
+        };
+        state.walk(ANNIE);
+        assert_eq!(state.bases, [Some(ANNIE), Some(ALYSSA), None]);
+        assert_eq!(state.score.score.away, 0);
+
+        let mut state = State {
+            bases: [Some(EIZABETH), Some(ALYSSA), None],
+            ..Default::default()
+        };
+        state.walk(ANNIE);
+        assert_eq!(state.bases, [Some(ANNIE), Some(EIZABETH), Some(ALYSSA)]);
+        assert_eq!(state.score.score.away, 0);
+
+        let mut state = State {
+            bases: [Some(EIZABETH), Some(ALYSSA), Some(WYATT)],
+            ..Default::default()
+        };
+        state.walk(ANNIE);
+        assert_eq!(state.bases, [Some(ANNIE), Some(EIZABETH), Some(ALYSSA)]);
+        assert_eq!(state.score.score.away, 1);
+    }
 }
